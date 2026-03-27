@@ -1,0 +1,14 @@
+# Dockerfile incremental — adiciona pacotes faltantes sobre a imagem já construída.
+# Usar com: docker build -t rpa4all-nextcloud-builder:trixie -f Dockerfile.patch .
+# Muito mais rápido que rebuild completo pois não re-baixa Qt6 WebEngine.
+FROM rpa4all-nextcloud-builder:trixie
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update -qq && apt-get install -y --no-install-recommends \
+    libdbus-1-dev \
+    libglib2.0-dev \
+    qt6-websockets-dev \
+    libsystemd-dev \
+    librsvg2-bin \
+    && rm -rf /var/lib/apt/lists/*

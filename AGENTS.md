@@ -23,9 +23,10 @@ This is the **RPA4All** customized fork of the Nextcloud Desktop sync client. Ta
 - **Default server URL**: `https://nextcloud.rpa4all.com`
 - **SSO authentication**: Authentik (`https://auth.rpa4all.com`) — used with OAuth2/OIDC
 - **Target platforms**: Windows and Linux **only** — macOS customizations are **out of scope**
-- **Branding directory**: `./src/theme/` — contains app name, colors, logo files
+- **Branding config**: `./NEXTCLOUD.cmake` — arquivo CMake incluído pelo `CMakeLists.txt` com todas as variáveis de nome, domínio, URL de servidor e tema. **É aqui que as customizações RPA4All devem ser aplicadas.**
+- **Ícones/logos**: Diretório `./theme/colored/` (raiz do projeto) — arquivos SVG/PNG por contexto de tema
 - **Branch convention**: `rpa4all/<feature>` for customization branches, `master` for upstream tracking
-- **Custom cmake config**: `./RPA4All.cmake` (if exists) for build-time branding overrides
+- **Build pipeline**: Docker-based em `./scripts/` → produz `.deb` para LMDE 7 / Debian 13 Trixie
 
 ## Project Overview
 
@@ -48,6 +49,54 @@ Beyond that, there are platform-specific shell integrations in the `./shell_inte
 | `./translations` | Translation files from Transifex.                  | Do not modify |
 | `.mac-crafter`  | macOS build artifacts.                              | **Ignore entirely**  |
 | `.xcode`        | macOS build artifacts.                              | **Ignore entirely**  |
+
+## Build Pipeline
+
+O build é feito via Docker para garantir ambiente reprodutível (Debian 13 Trixie):
+
+```bash
+# Compila e gera .deb em ./build/
+./scripts/docker-build-deb.sh
+
+# Com número fixo de jobs
+./scripts/docker-build-deb.sh 4
+```
+
+**Arquivos de build** (em `./scripts/`, **não commitados ainda**):
+| Arquivo | Função |
+|---------|--------|
+| `Dockerfile.build` | Imagem Debian Trixie com todas as dependências Qt6/KDE |
+| `Dockerfile.patch` | Patch incremental sobre imagem já existente (mais rápido) |
+| `compile.sh` | Executado dentro do container: cmake + ninja + cpack → `.deb` |
+| `docker-build-deb.sh` | Script host: constrói a imagem e executa o container |
+
+**Output**: `./build/rpa4all-nextcloud-desktop_<versão>_amd64.deb` — instalável em LMDE 7 / Debian 13.
+
+## Branding / Customizações RPA4All
+
+**Ponto central**: `./NEXTCLOUD.cmake` — incluído pelo `CMakeLists.txt` via `include(${CMAKE_SOURCE_DIR}/NEXTCLOUD.cmake)`.
+
+Variáveis a sobrescrever para a build RPA4All:
+
+```cmake
+set( APPLICATION_NAME       "RPA4All Files" )
+set( APPLICATION_SHORTNAME  "RPA4AllFiles" )
+set( APPLICATION_EXECUTABLE "rpa4all-files" )
+set( APPLICATION_ICON_NAME  "RPA4AllFiles" )
+set( APPLICATION_CONFIG_NAME "rpa4all-files" )
+set( APPLICATION_DOMAIN     "rpa4all.com" )
+set( APPLICATION_VENDOR     "RPA4All" )
+set( APPLICATION_SERVER_URL "https://nextcloud.rpa4all.com" CACHE STRING "" )
+set( APPLICATION_SERVER_URL_ENFORCE ON )
+set( APPLICATION_REV_DOMAIN "com.rpa4all.files" )
+set( LINUX_PACKAGE_SHORTNAME "rpa4all-files" )
+set( LINUX_APPLICATION_ID   "${APPLICATION_REV_DOMAIN}.${LINUX_PACKAGE_SHORTNAME}" )
+set( THEME_CLASS            "RPA4AllTheme" )
+```
+
+**Ícones/logos**: Colocar SVGs em `./theme/colored/` seguindo as convenções de nomenclatura do upstream (ex: `wizard_logo.svg`, `Nextcloud.svg` → renomear para o `APPLICATION_ICON_NAME` definido).
+
+**Commit convention para branding**: prefixar com `rpa4all:` para facilitar merge com upstream.
 
 ## General Guidance
 

@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: 2026 RPA4All contributors
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+# Imagem de build para compilar nextcloud/desktop (rpa4all fork) no Debian 13 Trixie.
+# Compatível com LMDE 7 para geração de .deb instalável diretamente.
+FROM debian:trixie
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=America/Sao_Paulo
+
+# Dependências de build do nextcloud/desktop
+RUN apt-get update -qq && apt-get install -y --no-install-recommends \
+    cmake \
+    ninja-build \
+    make \
+    git \
+    pkg-config \
+    extra-cmake-modules \
+    # Qt6 core + módulos
+    qt6-base-dev \
+    qt6-base-private-dev \
+    qt6-tools-dev \
+    qt6-tools-dev-tools \
+    qt6-declarative-dev \
+    qt6-declarative-private-dev \
+    qt6-svg-dev \
+    qt6-multimedia-dev \
+    qt6-5compat-dev \
+    qt6-websockets-dev \
+    # Qt6 WebEngine (para OAuth browser flow)
+    qt6-webengine-dev \
+    # KDE Frameworks 6
+    libkf6archive-dev \
+    libkf6guiaddons-dev \
+    # Keychain
+    qtkeychain-qt6-dev \
+    # Criptografia + compressão
+    libssl-dev \
+    zlib1g-dev \
+    # SQLite
+    libsqlite3-dev \
+    # Cloud providers (GNOME integration)
+    libcloudproviders-dev \
+    # D-Bus (obrigatório quando cloudproviders está presente)
+    libdbus-1-dev \
+    # GLib/GIO (obrigatório quando cloudproviders está presente)
+    libglib2.0-dev \
+    # Secret store (kwallet/gnome-keyring)
+    libsecret-1-dev \
+    # PKCS#11 para criptografia hardware (E2E encryption)
+    libp11-dev \
+    # KDSingleApplication (single-instance policy)
+    libkdsingleapplication-qt6-dev \
+    # Integração systemd (opcional)
+    libsystemd-dev \
+    # Conversor SVG para ícones (obrigatório durante cmake configure)
+    librsvg2-bin \
+    # Ferramentas de empacotamento
+    dpkg-dev \
+    fakeroot \
+    # Compiladores
+    g++ \
+    libstdc++-14-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY compile.sh /scripts/compile.sh
+RUN chmod +x /scripts/compile.sh

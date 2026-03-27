@@ -9,6 +9,7 @@
 
 #include <QtTest>
 #include <QTemporaryDir>
+#include <QSettings>
 
 #include "accountstate.h"
 #include "common/vfs.h"
@@ -82,6 +83,38 @@ private slots:
         QCOMPARE(folder2.sidebarDisplayName(), "Documents"_L1 + expectedSuffixAccount1);
         QCOMPARE(folder3.sidebarDisplayName(), "Photos/to_sort"_L1 + expectedSuffixAccount1);
         QCOMPARE(folder4.sidebarDisplayName(), appName + expectedSuffixAccount2);
+    }
+
+    void test_folderDefinitionPersistsDeleteLocalAfterTransferCompleted()
+    {
+        const auto tempDir = QTemporaryDir();
+        QVERIFY(tempDir.isValid());
+
+        const auto settingsPath = tempDir.path() + "/folder.ini"_L1;
+
+        FolderDefinition saved;
+        saved.alias = "alias-test"_L1;
+        saved.localPath = FolderDefinition::prepareLocalPath(tempDir.path());
+        saved.targetPath = FolderDefinition::prepareTargetPath("/remote"_L1);
+        saved.deleteLocalAfterTransferCompleted = true;
+
+        {
+            QSettings settings(settingsPath, QSettings::IniFormat);
+            settings.beginGroup(saved.alias);
+            FolderDefinition::save(settings, saved);
+            settings.endGroup();
+            settings.sync();
+        }
+
+        FolderDefinition loaded;
+        {
+            QSettings settings(settingsPath, QSettings::IniFormat);
+            settings.beginGroup(saved.alias);
+            QVERIFY(FolderDefinition::load(settings, saved.alias, &loaded));
+            settings.endGroup();
+        }
+
+        QVERIFY(loaded.deleteLocalAfterTransferCompleted);
     }
 };
 

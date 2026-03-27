@@ -307,6 +307,22 @@ void Folder::setIgnoreHiddenFiles(bool ignore)
     _definition.ignoreHiddenFiles = ignore;
 }
 
+bool Folder::deleteLocalAfterTransferCompleted() const
+{
+    return _definition.deleteLocalAfterTransferCompleted;
+}
+
+void Folder::setDeleteLocalAfterTransferCompleted(bool enabled)
+{
+    if (_definition.deleteLocalAfterTransferCompleted == enabled) {
+        return;
+    }
+
+    _definition.deleteLocalAfterTransferCompleted = enabled;
+    saveToSettings();
+    syncEngine().setSyncOptions(initializeSyncOptions());
+}
+
 QString Folder::cleanPath() const
 {
     QString cleanedPath = QDir::cleanPath(_canonicalLocalPath);
@@ -1250,6 +1266,7 @@ SyncOptions Folder::initializeSyncOptions() const
     opt._newBigFolderSizeLimit = newFolderLimit.first ? newFolderLimit.second * 1000LL * 1000LL : -1; // convert from MB to B
     opt._confirmExternalStorage = cfgFile.confirmExternalStorage();
     opt._moveFilesToTrash = cfgFile.moveToTrash();
+    opt._deleteLocalAfterTransferCompleted = _definition.deleteLocalAfterTransferCompleted;
     opt._vfs = _vfs;
 
     const auto capsMaxConcurrentChunkUploads = account->capabilities().maxConcurrentChunkUploads();
@@ -1893,6 +1910,7 @@ void FolderDefinition::save(QSettings &settings, const FolderDefinition &folder)
     settings.setValue(QLatin1String("targetPath"), folder.targetPath);
     settings.setValue(QLatin1String("paused"), folder.paused);
     settings.setValue(QLatin1String("ignoreHiddenFiles"), folder.ignoreHiddenFiles);
+    settings.setValue(QLatin1String("deleteLocalAfterTransferCompleted"), folder.deleteLocalAfterTransferCompleted);
 
     settings.setValue(QStringLiteral("virtualFilesMode"), Vfs::modeToString(folder.virtualFilesMode));
 
@@ -1925,6 +1943,7 @@ bool FolderDefinition::load(QSettings &settings, const QString &alias,
     folder->targetPath = settings.value(QLatin1String("targetPath")).toString();
     folder->paused = settings.value(QLatin1String("paused")).toBool();
     folder->ignoreHiddenFiles = settings.value(QLatin1String("ignoreHiddenFiles"), QVariant(true)).toBool();
+    folder->deleteLocalAfterTransferCompleted = settings.value(QLatin1String("deleteLocalAfterTransferCompleted"), QVariant(false)).toBool();
     folder->navigationPaneClsid = settings.value(QLatin1String("navigationPaneClsid")).toUuid();
 
     folder->virtualFilesMode = Vfs::Off;

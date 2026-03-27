@@ -60,6 +60,8 @@ public:
     bool paused = false;
     /// whether the folder syncs hidden files
     bool ignoreHiddenFiles = false;
+    /// whether uploaded files should be turned into local online-only placeholders after successful transfer
+    bool deleteLocalAfterTransferCompleted = false;
     /// Which virtual files setting the folder uses
     Vfs::Mode virtualFilesMode = Vfs::Off;
     /// The CLSID where this folder appears in registry for the Explorer navigation pane entry.
@@ -239,6 +241,8 @@ public:
       */
     [[nodiscard]] bool ignoreHiddenFiles();
     void setIgnoreHiddenFiles(bool ignore);
+    [[nodiscard]] bool deleteLocalAfterTransferCompleted() const;
+    void setDeleteLocalAfterTransferCompleted(bool enabled);
 
     // Used by the Socket API
     [[nodiscard]] SyncJournalDb *journalDb() const { return &_journal; }

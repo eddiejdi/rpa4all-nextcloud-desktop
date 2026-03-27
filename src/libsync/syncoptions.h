@@ -37,6 +37,9 @@ public:
     /** If remotely deleted files are needed to move to trash */
     bool _moveFilesToTrash = false;
 
+    /** If files should become local online-only placeholders after successful upload */
+    bool _deleteLocalAfterTransferCompleted = false;
+
     /** Create a virtual file for new files instead of downloading. May not be null */
     QSharedPointer<Vfs> _vfs;
 

@@ -845,6 +845,17 @@ void PropagateUploadFileCommon::finalize()
         }
     }
 
+    if (propagator()->syncOptions()._deleteLocalAfterTransferCompleted) {
+        auto &vfs = propagator()->syncOptions()._vfs;
+        if (vfs && vfs->mode() != Vfs::Off) {
+            if (!vfs->setPinState(_item->_file, PinState::OnlineOnly)) {
+                qCWarning(lcPropagateUpload) << "Could not set pin state of" << _item->_file << "to online-only";
+            }
+        } else {
+            qCWarning(lcPropagateUpload) << "Delete local after transfer is enabled but virtual files are disabled for" << _item->_file;
+        }
+    }
+
     // Remove from the progress database:
     propagator()->_journal->setUploadInfo(_item->_file, SyncJournalDb::UploadInfo());
     propagator()->_journal->commit("upload file start");

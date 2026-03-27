@@ -57,6 +57,9 @@
 #include <QPushButton>
 #include <QStyle>
 #include <QFileDialog>
+#include <QCheckBox>
+#include <QSignalBlocker>
+#include <QItemSelectionModel>
 
 using namespace Qt::StringLiterals;
 
@@ -257,6 +260,28 @@ AccountSettings::AccountSettings(AccountState *accountState, QWidget *parent)
         this, &AccountSettings::slotLinkActivated);
     connect(_model, &FolderStatusModel::suggestExpand, _ui->_folderList, &QTreeView::expand);
     connect(_model, &FolderStatusModel::dirtyChanged, this, &AccountSettings::refreshSelectiveSyncStatus);
+
+    _deleteLocalAfterTransferCheckBox = new QCheckBox(
+        tr("Excluir o arquivo local após a transferência concluída"),
+        _ui->syncFoldersPanelContents);
+    _deleteLocalAfterTransferCheckBox->setToolTip(
+        tr("Mantém o arquivo no servidor e converte a cópia local para online-only após upload com sucesso. Requer Virtual Files."));
+    _deleteLocalAfterTransferCheckBox->setEnabled(false);
+    _ui->syncFoldersLayout->insertWidget(1, _deleteLocalAfterTransferCheckBox);
+    connect(_deleteLocalAfterTransferCheckBox, &QCheckBox::toggled, this, [this](bool enabled) {
+        const auto folder = FolderMan::instance()->folder(selectedFolderAlias());
+        if (folder && folder->accountState() == _accountState) {
+            folder->setDeleteLocalAfterTransferCompleted(enabled);
+        }
+    });
+
+    connect(_ui->_folderList->selectionModel(), &QItemSelectionModel::currentChanged,
+        this, [this](const QModelIndex &current, const QModelIndex &) {
+            updateDeleteLocalAfterTransferCheckbox(current);
+        });
+
+    updateDeleteLocalAfterTransferCheckbox();
+
     refreshSelectiveSyncStatus();
     connect(_model, &QAbstractItemModel::rowsInserted,
         this, &AccountSettings::refreshSelectiveSyncStatus);
@@ -761,6 +786,8 @@ void AccountSettings::slotCustomContextMenuRequested(const QPoint &pos)
 
 void AccountSettings::slotFolderListClicked(const QModelIndex &indx)
 {
+    updateDeleteLocalAfterTransferCheckbox(indx);
+
     if (indx.data(FolderStatusDelegate::AddButton).toBool()) {
         // "Add Folder Sync Connection"
         const auto treeView = _ui->_folderList;
@@ -811,6 +838,28 @@ void AccountSettings::slotFolderListClicked(const QModelIndex &indx)
             _ui->_folderList->setExpanded(indx, expanded);
         }
     }
+}
+
+void AccountSettings::updateDeleteLocalAfterTransferCheckbox(const QModelIndex &current)
+{
+    if (!_deleteLocalAfterTransferCheckBox) {
+        return;
+    }
+
+    const auto index = current.isValid() ? current : _ui->_folderList->selectionModel()->currentIndex();
+    const auto alias = _model->data(index, FolderStatusDelegate::FolderAliasRole).toString();
+    const auto folder = alias.isEmpty() ? nullptr : FolderMan::instance()->folder(alias);
+
+    if (!folder || folder->accountState() != _accountState) {
+        const QSignalBlocker blocker(_deleteLocalAfterTransferCheckBox);
+        _deleteLocalAfterTransferCheckBox->setChecked(false);
+        _deleteLocalAfterTransferCheckBox->setEnabled(false);
+        return;
+    }
+
+    const QSignalBlocker blocker(_deleteLocalAfterTransferCheckBox);
+    _deleteLocalAfterTransferCheckBox->setEnabled(true);
+    _deleteLocalAfterTransferCheckBox->setChecked(folder->deleteLocalAfterTransferCompleted());
 }
 
 void AccountSettings::slotAddFolder()

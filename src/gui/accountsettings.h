@@ -29,6 +29,7 @@ class QListWidgetItem;
 class QLabel;
 class QPushButton;
 class QIcon;
+class QCheckBox;
 
 namespace OCC {
 
@@ -137,6 +138,7 @@ private slots:
     void forgetE2eEncryption();
     void checkClientSideEncryptionState();
     void removeActionFromEncryptionMessage(const QString &actionId);
+    void updateDeleteLocalAfterTransferCheckbox(const QModelIndex &current = QModelIndex());
 
 private:
     bool event(QEvent *) override;
@@ -163,6 +165,7 @@ private:
 
     QHash<QString, QMetaObject::Connection> _folderConnections;
     QHash<QAction *, QPushButton *> _encryptionMessageButtons;
+    QCheckBox *_deleteLocalAfterTransferCheckBox = nullptr;
 
     QString _spaceUsageText;
 };

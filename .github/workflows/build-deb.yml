@@ -1,0 +1,92 @@
+# SPDX-FileCopyrightText: 2026 RPA4All
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: Build RPA4All Desktop .deb
+
+on:
+  push:
+    branches:
+      - rpa4all-main
+  workflow_dispatch:
+    inputs:
+      version_suffix:
+        description: 'Version suffix'
+        required: false
+        default: 'rpa4all1'
+
+jobs:
+  build-deb:
+    name: Build .deb package
+    runs-on: ubuntu-22.04
+    container: ghcr.io/nextcloud/continuous-integration-client-qt6:client-forky-6.9.2-3
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: rpa4all-main
+          fetch-depth: 0
+      - name: Install dpkg tools
+        run: apt-get update -qq && apt-get install -y --no-install-recommends dpkg-dev fakeroot file 2>/dev/null || true
+      - name: Read version
+        id: ver
+        run: |
+          MAJ=$(grep 'MIRALL_VERSION_MAJOR' VERSION.cmake | grep -oP '\d+')
+          MIN=$(grep 'MIRALL_VERSION_MINOR' VERSION.cmake | grep -oP '\d+')
+          PAT=$(grep 'MIRALL_VERSION_PATCH' VERSION.cmake | grep -oP '\d+')
+          SUF="${{ github.event.inputs.version_suffix || 'rpa4all1' }}"
+          VER="${MAJ}.${MIN}.${PAT}"
+          PKGVER="${VER}-${SUF}"
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "pkg_version=${PKGVER}" >> "$GITHUB_OUTPUT"
+          echo "deb_name=rpa4all-nextcloud-desktop_${PKGVER}_amd64.deb" >> "$GITHUB_OUTPUT"
+      - name: CMake configure
+        run: |
+          mkdir build && cd build
+          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DQT_MAJOR_VERSION=6 \
+            -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_UPDATER=OFF -DBUILD_TESTING=OFF \
+            -DLINUX_PACKAGE_SHORTNAME=rpa4all-nextcloud-desktop \
+            -DMIRALL_VERSION_SUFFIX="" -DMIRALL_VERSION_BUILD="${{ github.run_number }}"
+      - name: Build
+        run: cd build && ninja -j$(nproc)
+      - name: Install to staging
+        run: cd build && DESTDIR="${GITHUB_WORKSPACE}/pkg_root" ninja install
+      - name: Create DEBIAN/control
+        run: |
+          mkdir -p pkg_root/DEBIAN
+          cat > pkg_root/DEBIAN/control <<CTRL
+          Package: rpa4all-nextcloud-desktop
+          Version: ${{ steps.ver.outputs.pkg_version }}
+          Architecture: amd64
+          Maintainer: RPA4All <edenilson.adm@gmail.com>
+          Depends: libqt6core6 | libqt6core6t64, libsecret-1-0
+          Section: net
+          Priority: optional
+          Description: RPA4All Files Desktop Sync Client
+           Syncs files with RPA4All Nextcloud.
+          CTRL
+      - name: Build .deb
+        run: fakeroot dpkg-deb --build pkg_root "${{ steps.ver.outputs.deb_name }}"
+      - name: SHA256
+        id: sha
+        run: echo "sha256=$(sha256sum ${{ steps.ver.outputs.deb_name }} | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Upload artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
+        with:
+          name: rpa4all-nextcloud-desktop-deb
+          path: ${{ steps.ver.outputs.deb_name }}
+          compression-level: 0
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ steps.ver.outputs.pkg_version }}-rpa4all-linux"
+          gh release delete "${TAG}" --yes 2>/dev/null || true
+          gh release create "${TAG}" "${{ steps.ver.outputs.deb_name }}" \
+            --repo "${{ github.repository }}" \
+            --title "RPA4All Files Desktop ${{ steps.ver.outputs.pkg_version }} (Linux)" \
+            --notes "Release Linux (.deb)
+
+          - Base: Nextcloud Desktop ${{ steps.ver.outputs.version }}
+          - Pacote: ${{ steps.ver.outputs.deb_name }}
+          - SHA256: ${{ steps.sha.outputs.sha256 }}
+          - Branch: rpa4all-main
+          - Build: #${{ github.run_number }}" \
+            --latest

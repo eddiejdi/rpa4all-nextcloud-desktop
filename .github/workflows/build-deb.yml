@@ -28,9 +28,14 @@ jobs:
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends
           git cmake ninja-build gcc g++ pkg-config
           qt6-base-dev qt6-tools-dev qt6-tools-dev-tools
-          qt6-websockets-dev qt6-svg-dev
+          qt6-websockets-dev qt6-svg-dev qt6-declarative-dev
+          qt6-5compat-dev
           qtkeychain-qt6-dev
           extra-cmake-modules
+          libkf6archive-dev libkf6guiaddons-dev
+          libkdsingleapplication-qt6-dev
+          libinotifytools-dev
+          shared-mime-info
           libsecret-1-dev libssl-dev libsqlite3-dev zlib1g-dev
           dpkg-dev fakeroot file curl python3
 

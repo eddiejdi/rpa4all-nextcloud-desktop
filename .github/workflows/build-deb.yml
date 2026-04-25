@@ -26,7 +26,7 @@ jobs:
 
       - name: Install dpkg tools
         shell: bash
-        run: apt-get update -qq && apt-get install -y --no-install-recommends dpkg-dev fakeroot file 2>/dev/null || true
+        run: apt-get update -qq && apt-get install -y --no-install-recommends dpkg-dev fakeroot file curl 2>/dev/null || true
 
       - name: Read version
         id: ver
@@ -101,22 +101,55 @@ jobs:
           path: ${{ steps.ver.outputs.deb_name }}
           compression-level: 0
 
-      - name: Create Release
+      - name: Create Release via API
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.ver.outputs.tag }}"
           DEB="${{ steps.ver.outputs.deb_name }}"
-          gh release delete "${TAG}" --yes 2>/dev/null || true
-          gh release create "${TAG}" "${DEB}" \
-            --repo "${{ github.repository }}" \
-            --title "RPA4All Files Desktop ${{ steps.ver.outputs.pkg_version }} (Linux)" \
-            --notes "Release Linux (.deb)
+          REPO="${{ github.repository }}"
+          SHA="${{ steps.sha.outputs.sha256 }}"
+          VER="${{ steps.ver.outputs.version }}"
+          PKGVER="${{ steps.ver.outputs.pkg_version }}"
+          RUN="${{ github.run_number }}"
 
-          - Base: Nextcloud Desktop ${{ steps.ver.outputs.version }}
-          - Pacote: ${DEB}
-          - SHA256: ${{ steps.sha.outputs.sha256 }}
-          - Branch: rpa4all-main
-          - Build: #${{ github.run_number }}" \
-            --latest
+          # Delete existing release if any
+          RELEASE_ID=$(curl -sf -H "Authorization: Bearer ${GH_TOKEN}" \
+            "https://api.github.com/repos/${REPO}/releases/tags/${TAG}" | \
+            python3 -c "import json,sys; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || true)
+          if [ -n "${RELEASE_ID}" ]; then
+            curl -sf -X DELETE -H "Authorization: Bearer ${GH_TOKEN}" \
+              "https://api.github.com/repos/${REPO}/releases/${RELEASE_ID}" || true
+            curl -sf -X DELETE -H "Authorization: Bearer ${GH_TOKEN}" \
+              "https://api.github.com/repos/${REPO}/git/refs/tags/${TAG}" || true
+          fi
+
+          # Create release
+          BODY="Release Linux (.deb)\n\n- Base: Nextcloud Desktop ${VER}\n- Pacote: ${DEB}\n- SHA256: ${SHA}\n- Branch: rpa4all-main\n- Build: #${RUN}"
+          RELEASE=$(python3 -c "
+          import json, sys
+          print(json.dumps({
+            'tag_name': '${TAG}',
+            'name': 'RPA4All Files Desktop ${PKGVER} (Linux)',
+            'body': '${BODY}',
+            'draft': False,
+            'prerelease': False,
+            'make_latest': 'true'
+          }))
+          ")
+          RESPONSE=$(curl -sf -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "${RELEASE}" \
+            "https://api.github.com/repos/${REPO}/releases")
+          UPLOAD_URL=$(echo "${RESPONSE}" | python3 -c "import json,sys; print(json.load(sys.stdin)['upload_url'].split('{')[0])")
+
+          # Upload .deb asset
+          curl -sf -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Content-Type: application/vnd.debian.binary-package" \
+            --data-binary "@${DEB}" \
+            "${UPLOAD_URL}?name=${DEB}"
+
+          echo "Release criado: https://github.com/${REPO}/releases/tag/${TAG}"

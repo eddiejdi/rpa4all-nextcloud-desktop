@@ -17,20 +17,34 @@ jobs:
   build-deb:
     name: Build .deb package
     runs-on: ubuntu-22.04
-    container: ghcr.io/nextcloud/continuous-integration-client-qt6:client-forky-6.9.2-3
+    container:
+      image: debian:trixie
+      options: --user root
+
     steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends \
+            git cmake ninja-build gcc g++ \
+            libqt6core6t64 libqt6gui6t64 libqt6network6t64 libqt6widgets6t64 \
+            libqt6websockets6 libqt6webenginewidgets6 libqt6svg6 \
+            qt6-base-dev qt6-tools-dev qt6-tools-dev-tools \
+            qt6-websockets-dev qt6-svg-dev \
+            libkf6wallet-dev libkf6kwallet-dev \
+            libsecret-1-dev libssl-dev libsqlite3-dev zlib1g-dev \
+            libkqoauth-dev libqt6keychain1 qt6-qpa-plugins \
+            qtkeychain-qt6-dev \
+            dpkg-dev fakeroot file curl python3 \
+            2>/dev/null || true
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           ref: rpa4all-main
           fetch-depth: 0
 
-      - name: Install dpkg tools
-        shell: bash
-        run: apt-get update -qq && apt-get install -y --no-install-recommends dpkg-dev fakeroot file curl 2>/dev/null || true
-
       - name: Read version
         id: ver
-        shell: bash
         run: |
           MAJ=$(sed -n 's/^set(MIRALL_VERSION_MAJOR \([0-9]*\))/\1/p' VERSION.cmake)
           MIN=$(sed -n 's/^set(MIRALL_VERSION_MINOR \([0-9]*\))/\1/p' VERSION.cmake)
@@ -46,7 +60,6 @@ jobs:
           echo "Version: ${VER}, Package: ${PKGVER}"
 
       - name: CMake configure
-        shell: bash
         run: |
           mkdir build && cd build
           cmake .. -G Ninja \
@@ -60,15 +73,12 @@ jobs:
             -DMIRALL_VERSION_BUILD="${{ github.run_number }}"
 
       - name: Build
-        shell: bash
         run: cd build && ninja -j$(nproc)
 
       - name: Install to staging
-        shell: bash
         run: cd build && DESTDIR="${GITHUB_WORKSPACE}/pkg_root" ninja install
 
       - name: Create DEBIAN/control
-        shell: bash
         run: |
           mkdir -p pkg_root/DEBIAN
           cat > pkg_root/DEBIAN/control << CTRL
@@ -76,7 +86,7 @@ jobs:
           Version: ${{ steps.ver.outputs.pkg_version }}
           Architecture: amd64
           Maintainer: RPA4All <edenilson.adm@gmail.com>
-          Depends: libqt6core6 | libqt6core6t64, libsecret-1-0
+          Depends: libqt6core6t64 | libqt6core6, libqt6gui6t64 | libqt6gui6, libqt6widgets6t64 | libqt6widgets6, libqt6network6t64 | libqt6network6, libsecret-1-0
           Section: net
           Priority: optional
           Description: RPA4All Files Desktop Sync Client
@@ -84,12 +94,10 @@ jobs:
           CTRL
 
       - name: Build .deb
-        shell: bash
         run: fakeroot dpkg-deb --build pkg_root "${{ steps.ver.outputs.deb_name }}"
 
       - name: SHA256
         id: sha
-        shell: bash
         run: |
           SHA=$(sha256sum "${{ steps.ver.outputs.deb_name }}" | awk '{print $1}')
           echo "sha256=${SHA}" >> "${GITHUB_OUTPUT}"
@@ -102,7 +110,6 @@ jobs:
           compression-level: 0
 
       - name: Create Release via API
-        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -114,10 +121,9 @@ jobs:
           PKGVER="${{ steps.ver.outputs.pkg_version }}"
           RUN="${{ github.run_number }}"
 
-          # Delete existing release if any
           RELEASE_ID=$(curl -sf -H "Authorization: Bearer ${GH_TOKEN}" \
             "https://api.github.com/repos/${REPO}/releases/tags/${TAG}" | \
-            python3 -c "import json,sys; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || true)
+            python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null || true)
           if [ -n "${RELEASE_ID}" ]; then
             curl -sf -X DELETE -H "Authorization: Bearer ${GH_TOKEN}" \
               "https://api.github.com/repos/${REPO}/releases/${RELEASE_ID}" || true
@@ -125,19 +131,17 @@ jobs:
               "https://api.github.com/repos/${REPO}/git/refs/tags/${TAG}" || true
           fi
 
-          # Create release
-          BODY="Release Linux (.deb)\n\n- Base: Nextcloud Desktop ${VER}\n- Pacote: ${DEB}\n- SHA256: ${SHA}\n- Branch: rpa4all-main\n- Build: #${RUN}"
           RELEASE=$(python3 -c "
-          import json, sys
-          print(json.dumps({
-            'tag_name': '${TAG}',
-            'name': 'RPA4All Files Desktop ${PKGVER} (Linux)',
-            'body': '${BODY}',
-            'draft': False,
-            'prerelease': False,
-            'make_latest': 'true'
-          }))
-          ")
+import json
+print(json.dumps({
+  'tag_name': '${TAG}',
+  'name': 'RPA4All Files Desktop ${PKGVER} (Linux)',
+  'body': 'Release Linux (.deb)\n\n- Base: Nextcloud Desktop ${VER}\n- Pacote: ${DEB}\n- SHA256: ${SHA}\n- Branch: rpa4all-main\n- Build: #${RUN}',
+  'draft': False,
+  'prerelease': False,
+  'make_latest': 'true'
+}))
+")
           RESPONSE=$(curl -sf -X POST \
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Content-Type: application/json" \
@@ -145,11 +149,10 @@ jobs:
             "https://api.github.com/repos/${REPO}/releases")
           UPLOAD_URL=$(echo "${RESPONSE}" | python3 -c "import json,sys; print(json.load(sys.stdin)['upload_url'].split('{')[0])")
 
-          # Upload .deb asset
           curl -sf -X POST \
             -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Content-Type: application/vnd.debian.binary-package" \
             --data-binary "@${DEB}" \
             "${UPLOAD_URL}?name=${DEB}"
 
-          echo "Release criado: https://github.com/${REPO}/releases/tag/${TAG}"
+          echo "Release: https://github.com/${REPO}/releases/tag/${TAG}"

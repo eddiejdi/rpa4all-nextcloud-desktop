@@ -46,6 +46,7 @@ jobs:
           libkdsingleapplication-qt6-dev
           libinotifytools-dev
           shared-mime-info
+          libp11-dev libdbus-1-dev libglib2.0-dev
           libsecret-1-dev libssl-dev libsqlite3-dev zlib1g-dev
           dpkg-dev fakeroot file curl python3
 

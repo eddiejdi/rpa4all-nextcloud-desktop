@@ -22,26 +22,22 @@ jobs:
       options: --user root
 
     steps:
-      - name: Fix SSL certs
-        run: |
-          apt-get update -qq
-          apt-get install -y --no-install-recommends ca-certificates
-          update-ca-certificates
-
-      - uses: actions/checkout@v4
-        with:
-          ref: rpa4all-main
-          fetch-depth: 0
-
       - name: Install build dependencies
         run: >-
+          apt-get update -qq &&
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends
-          cmake ninja-build gcc g++ pkg-config
+          git cmake ninja-build gcc g++ pkg-config
           qt6-base-dev qt6-tools-dev qt6-tools-dev-tools
           qt6-websockets-dev qt6-svg-dev
           qtkeychain-qt6-dev
+          extra-cmake-modules
           libsecret-1-dev libssl-dev libsqlite3-dev zlib1g-dev
           dpkg-dev fakeroot file curl python3
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: rpa4all-main
+          fetch-depth: 0
 
       - name: Read version
         id: ver
@@ -83,7 +79,16 @@ jobs:
           python3 -c "
           import sys
           ver = sys.argv[1]
-          ctrl = 'Package: rpa4all-nextcloud-desktop\nVersion: ' + ver + '\nArchitecture: amd64\nMaintainer: RPA4All <edenilson.adm@gmail.com>\nDepends: libqt6core6t64 | libqt6core6, libsecret-1-0\nSection: net\nPriority: optional\nDescription: RPA4All Files Desktop Sync Client\n Syncs files with RPA4All Nextcloud.\n'
+          ctrl = f'''Package: rpa4all-nextcloud-desktop
+          Version: {ver}
+          Architecture: amd64
+          Maintainer: RPA4All <edenilson.adm@gmail.com>
+          Depends: libqt6core6t64 | libqt6core6, libsecret-1-0
+          Section: net
+          Priority: optional
+          Description: RPA4All Files Desktop Sync Client
+           Syncs files with RPA4All Nextcloud.
+          '''
           open('pkg_root/DEBIAN/control','w').write(ctrl)
           " "${{ steps.ver.outputs.pkg_version }}"
 
@@ -97,7 +102,7 @@ jobs:
           echo "sha256=${SHA}" >> "${GITHUB_OUTPUT}"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: rpa4all-nextcloud-desktop-deb
           path: ${{ steps.ver.outputs.deb_name }}
@@ -123,16 +128,25 @@ jobs:
             curl -sf -X DELETE -H "Authorization: Bearer ${GH_TOKEN}" \
               "https://api.github.com/repos/${REPO}/git/refs/tags/${TAG}" || true
           fi
-          python3 - "${TAG}" "${PKGVER}" "${VER}" "${DEB}" "${SHA}" "${RUN}" "${REPO}" "${GH_TOKEN}" << 'INNER'
+          python3 - "${TAG}" "${PKGVER}" "${VER}" "${DEB}" "${SHA}" "${RUN}" "${REPO}" "${GH_TOKEN}" << 'PYEOF'
           import json, sys, urllib.request
           tag, pkgver, ver, deb, sha, run, repo, token = sys.argv[1:]
           headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-          body = json.dumps({"tag_name": tag, "name": f"RPA4All Files Desktop {pkgver} (Linux)", "body": f"Release Linux (.deb)\n\n- Base: Nextcloud Desktop {ver}\n- Pacote: {deb}\n- SHA256: {sha}\n- Branch: rpa4all-main\n- Build: #{run}", "draft": False, "prerelease": False, "make_latest": "true"}).encode()
+          body = json.dumps({
+            "tag_name": tag,
+            "name": f"RPA4All Files Desktop {pkgver} (Linux)",
+            "body": f"Release Linux (.deb)\n\n- Base: Nextcloud Desktop {ver}\n- Pacote: {deb}\n- SHA256: {sha}\n- Branch: rpa4all-main\n- Build: #{run}",
+            "draft": False, "prerelease": False, "make_latest": "true"
+          }).encode()
           req = urllib.request.Request(f"https://api.github.com/repos/{repo}/releases", data=body, headers=headers, method="POST")
           resp = json.loads(urllib.request.urlopen(req).read())
           upload_url = resp["upload_url"].split("{")[0]
-          data = open(deb, "rb").read()
-          req2 = urllib.request.Request(f"{upload_url}?name={deb}", data=data, headers={"Authorization": f"Bearer {token}", "Content-Type": "application/vnd.debian.binary-package"}, method="POST")
+          with open(deb, "rb") as f:
+            data = f.read()
+          req2 = urllib.request.Request(f"{upload_url}?name={deb}", data=data, headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/vnd.debian.binary-package"
+          }, method="POST")
           urllib.request.urlopen(req2)
           print(f"Release: https://github.com/{repo}/releases/tag/{tag}")
-          INNER
+          PYEOF

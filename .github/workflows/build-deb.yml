@@ -23,35 +23,55 @@ jobs:
         with:
           ref: rpa4all-main
           fetch-depth: 0
+
       - name: Install dpkg tools
+        shell: bash
         run: apt-get update -qq && apt-get install -y --no-install-recommends dpkg-dev fakeroot file 2>/dev/null || true
+
       - name: Read version
         id: ver
+        shell: bash
         run: |
-          MAJ=$(grep 'MIRALL_VERSION_MAJOR' VERSION.cmake | grep -oP '\d+')
-          MIN=$(grep 'MIRALL_VERSION_MINOR' VERSION.cmake | grep -oP '\d+')
-          PAT=$(grep 'MIRALL_VERSION_PATCH' VERSION.cmake | grep -oP '\d+')
+          MAJ=$(sed -n 's/^set(MIRALL_VERSION_MAJOR \([0-9]*\))/\1/p' VERSION.cmake)
+          MIN=$(sed -n 's/^set(MIRALL_VERSION_MINOR \([0-9]*\))/\1/p' VERSION.cmake)
+          PAT=$(sed -n 's/^set(MIRALL_VERSION_PATCH \([0-9]*\))/\1/p' VERSION.cmake)
           SUF="${{ github.event.inputs.version_suffix || 'rpa4all1' }}"
           VER="${MAJ}.${MIN}.${PAT}"
           PKGVER="${VER}-${SUF}"
-          echo "version=${VER}" >> "$GITHUB_OUTPUT"
-          echo "pkg_version=${PKGVER}" >> "$GITHUB_OUTPUT"
-          echo "deb_name=rpa4all-nextcloud-desktop_${PKGVER}_amd64.deb" >> "$GITHUB_OUTPUT"
+          DEB_NAME="rpa4all-nextcloud-desktop_${PKGVER}_amd64.deb"
+          echo "version=${VER}" >> "${GITHUB_OUTPUT}"
+          echo "pkg_version=${PKGVER}" >> "${GITHUB_OUTPUT}"
+          echo "deb_name=${DEB_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "tag=v${PKGVER}-rpa4all-linux" >> "${GITHUB_OUTPUT}"
+          echo "Version: ${VER}, Package: ${PKGVER}"
+
       - name: CMake configure
+        shell: bash
         run: |
           mkdir build && cd build
-          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DQT_MAJOR_VERSION=6 \
-            -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_UPDATER=OFF -DBUILD_TESTING=OFF \
+          cmake .. -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DQT_MAJOR_VERSION=6 \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DBUILD_UPDATER=OFF \
+            -DBUILD_TESTING=OFF \
             -DLINUX_PACKAGE_SHORTNAME=rpa4all-nextcloud-desktop \
-            -DMIRALL_VERSION_SUFFIX="" -DMIRALL_VERSION_BUILD="${{ github.run_number }}"
+            -DMIRALL_VERSION_SUFFIX="" \
+            -DMIRALL_VERSION_BUILD="${{ github.run_number }}"
+
       - name: Build
+        shell: bash
         run: cd build && ninja -j$(nproc)
+
       - name: Install to staging
+        shell: bash
         run: cd build && DESTDIR="${GITHUB_WORKSPACE}/pkg_root" ninja install
+
       - name: Create DEBIAN/control
+        shell: bash
         run: |
           mkdir -p pkg_root/DEBIAN
-          cat > pkg_root/DEBIAN/control <<CTRL
+          cat > pkg_root/DEBIAN/control << CTRL
           Package: rpa4all-nextcloud-desktop
           Version: ${{ steps.ver.outputs.pkg_version }}
           Architecture: amd64
@@ -62,30 +82,40 @@ jobs:
           Description: RPA4All Files Desktop Sync Client
            Syncs files with RPA4All Nextcloud.
           CTRL
+
       - name: Build .deb
+        shell: bash
         run: fakeroot dpkg-deb --build pkg_root "${{ steps.ver.outputs.deb_name }}"
+
       - name: SHA256
         id: sha
-        run: echo "sha256=$(sha256sum ${{ steps.ver.outputs.deb_name }} | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+        shell: bash
+        run: |
+          SHA=$(sha256sum "${{ steps.ver.outputs.deb_name }}" | awk '{print $1}')
+          echo "sha256=${SHA}" >> "${GITHUB_OUTPUT}"
+
       - name: Upload artifact
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f
         with:
           name: rpa4all-nextcloud-desktop-deb
           path: ${{ steps.ver.outputs.deb_name }}
           compression-level: 0
+
       - name: Create Release
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="v${{ steps.ver.outputs.pkg_version }}-rpa4all-linux"
+          TAG="${{ steps.ver.outputs.tag }}"
+          DEB="${{ steps.ver.outputs.deb_name }}"
           gh release delete "${TAG}" --yes 2>/dev/null || true
-          gh release create "${TAG}" "${{ steps.ver.outputs.deb_name }}" \
+          gh release create "${TAG}" "${DEB}" \
             --repo "${{ github.repository }}" \
             --title "RPA4All Files Desktop ${{ steps.ver.outputs.pkg_version }} (Linux)" \
             --notes "Release Linux (.deb)
 
           - Base: Nextcloud Desktop ${{ steps.ver.outputs.version }}
-          - Pacote: ${{ steps.ver.outputs.deb_name }}
+          - Pacote: ${DEB}
           - SHA256: ${{ steps.sha.outputs.sha256 }}
           - Branch: rpa4all-main
           - Build: #${{ github.run_number }}" \
